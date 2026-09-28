@@ -1,0 +1,20 @@
+{
+  "name": "tracker-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "pnpm --filter tracker-frontend dev",
+    "dev:backend": "cd backend && .venv/bin/uvicorn app.main:app --reload --port 8100",
+    "build:frontend": "pnpm --filter tracker-frontend build",
+    "lint:frontend": "pnpm --filter tracker-frontend lint",
+    "lint:backend": "cd backend && .venv/bin/ruff check .",
+    "test:backend": "cd backend && .venv/bin/pytest",
+    "db:migrate": "cd backend && .venv/bin/alembic upgrade head",
+    "db:migration:generate": "cd backend && .venv/bin/alembic revision --autogenerate -m",
+    "lint": "pnpm lint:frontend && pnpm lint:backend",
+    "test": "pnpm test:backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
