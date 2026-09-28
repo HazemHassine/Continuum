@@ -1,3 +1,5 @@
+import uuid
+
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -8,10 +10,19 @@ security = HTTPBearer(auto_error=False)
 
 
 class AuthenticatedUser:
-    def __init__(self, user_id: str, email: str | None = None, role: str | None = None):
+    def __init__(
+        self,
+        user_id: uuid.UUID,
+        email: str | None = None,
+        role: str | None = None,
+    ):
         self.id = user_id
         self.email = email
         self.role = role
+
+    @property
+    def id_str(self) -> str:
+        return str(self.id)
 
 
 def get_current_user(
@@ -30,21 +41,29 @@ def get_current_user(
 
     token = auth_header.credentials
     try:
-        # Supabase signs JWTs with HS256 using the JWT Secret
+        # Supabase signs JWTs with HS256 using the project JWT secret
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
             algorithms=["HS256"],
             options={"verify_aud": False},
         )
-        user_id: str = payload.get("sub")
-        if user_id is None:
+        user_id_raw: str | None = payload.get("sub")
+        if not user_id_raw:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload",
+                detail="Invalid token: missing subject claim",
             )
+        try:
+            user_uuid = uuid.UUID(user_id_raw)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: subject is not a valid UUID",
+            ) from None
+
         return AuthenticatedUser(
-            user_id=user_id,
+            user_id=user_uuid,
             email=payload.get("email"),
             role=payload.get("role"),
         )
