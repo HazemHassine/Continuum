@@ -85,7 +85,7 @@ export default function DashboardPage() {
         <div className="rounded-lg border bg-card p-6 shadow-sm">
           <h2 className="text-base font-semibold">Authentication Boundary Status</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            FastAPI verified the Supabase JWT token and resolved your tenant isolation context:
+            FastAPI verified the JWT token and resolved your tenant isolation context:
           </p>
 
           <div className="mt-4 space-y-2 rounded-md bg-muted/50 p-4 font-mono text-xs">

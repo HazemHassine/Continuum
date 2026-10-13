@@ -1,5 +1,7 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -7,6 +9,43 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.config import settings
 
 security = HTTPBearer(auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    """Hash a plaintext password using bcrypt."""
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against a bcrypt hash."""
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"),
+        hashed_password.encode("utf-8"),
+    )
+
+
+def create_access_token(
+    user_id: uuid.UUID | str,
+    email: str,
+    role: str = "authenticated",
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Create a signed JWT token."""
+    now = datetime.now(UTC)
+    if expires_delta:
+        expire = now + expires_delta
+    else:
+        expire = now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+
+    payload = {
+        "sub": str(user_id),
+        "email": email,
+        "role": role,
+        "exp": expire,
+        "iat": now,
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 class AuthenticatedUser:
@@ -29,7 +68,7 @@ def get_current_user(
     auth_header: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> AuthenticatedUser:
     """
-    Validates Supabase JWT and returns the authenticated user.
+    Validates JWT and returns the authenticated user.
     Enforces the security rule: client never supplies user_id directly.
     """
     if not auth_header:
@@ -41,11 +80,10 @@ def get_current_user(
 
     token = auth_header.credentials
     try:
-        # Supabase signs JWTs with HS256 using the project JWT secret
         payload = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
             options={"verify_aud": False},
         )
         user_id_raw: str | None = payload.get("sub")

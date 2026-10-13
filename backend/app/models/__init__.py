@@ -8,6 +8,7 @@ from app.models.entities import (
     Project,
     StickyNote,
     TimelineEntry,
+    User,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "Project",
     "StickyNote",
     "TimelineEntry",
+    "User",
 ]

@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "dev": "docker compose up",
+    "dev:local": "concurrently -n db,backend,frontend -c green,blue,magenta \"docker compose up db\" \"pnpm dev:backend\" \"pnpm dev:frontend\"",
     "dev:frontend": "pnpm --filter tracker-frontend dev",
     "dev:backend": "cd backend && .venv/bin/uvicorn app.main:app --reload --port 8100",
     "build:frontend": "pnpm --filter tracker-frontend build",

@@ -1,4 +1,4 @@
-# Tracker Development Rules
+# Continuum Development Rules
 
 Read docs/v1-spec.md before making architectural decisions.
 
@@ -16,8 +16,8 @@ Before making a significant architectural decision:
 Stack:
 - Next.js
 - FastAPI
-- PostgreSQL / Supabase
-- Supabase Auth
+- PostgreSQL (Docker / Local)
+- FastAPI Native Auth (JWT + bcrypt)
 - SQLAlchemy
 - BlockNote
 - Tailwind

@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
     """Basic service health check."""
-    return {"status": "ok", "service": "tracker-backend"}
+    return {"status": "ok", "service": "continuum-backend"}
 
 
 @router.get("/health/db", status_code=status.HTTP_200_OK)

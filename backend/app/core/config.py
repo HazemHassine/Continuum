@@ -10,16 +10,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    PROJECT_NAME: str = "Tracker API"
+    PROJECT_NAME: str = "Continuum API"
     ENVIRONMENT: str = "development"
 
     # Database
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/tracker_db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/continuum_db"
 
-    # Supabase Auth
-    SUPABASE_URL: str = "https://example.supabase.co"
-    SUPABASE_KEY: str = "example-anon-key"
-    SUPABASE_JWT_SECRET: str = "example-jwt-secret"
+    # Authentication & JWT
+    JWT_SECRET: str = "continuum-super-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
     # CORS
     BACKEND_CORS_ORIGINS: list[str] | str = [

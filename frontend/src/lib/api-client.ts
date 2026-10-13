@@ -1,4 +1,4 @@
-import { createClient } from "./supabase/client";
+import { getAuthToken } from "./auth";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
@@ -7,16 +7,13 @@ export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const token = getAuthToken();
 
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
 
-  if (session?.access_token) {
-    headers.set("Authorization", `Bearer ${session.access_token}`);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;

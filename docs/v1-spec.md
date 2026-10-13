@@ -1,4 +1,4 @@
-**TRACKER**
+**CONTINUUM**
 
 V1 Product  Technical Specification
 
@@ -19,7 +19,7 @@ A deliberately small, handcrafted personal tracking app that keeps goals, projec
 
 # 1. Decision snapshot
 
-| LOCKED | Core entities, lifecycle rules, generic links, single-date timeline, BlockNote, Supabase + FastAPI + Next.js, and the sketch-style toolchain. |
+| LOCKED | Core entities, lifecycle rules, generic links, single-date timeline, BlockNote, PostgreSQL + FastAPI + Next.js, and the sketch-style toolchain. |
 |---|---|
 
 | DEFERRED | Semantic link types, sub-goals, project deadlines, timeline date ranges, autosave/offline sync, tags, AI, rich media blocks, activity log, and per-type Library metadata. |
@@ -48,9 +48,7 @@ A deliberately small, handcrafted personal tracking app that keeps goals, projec
 
 One-screen landing page; no long marketing page is required.
 
-Email + password registration and sign-in using Supabase Auth.
-
-Email verification/activation is part of the intended flow.
+Email + password registration and sign-in using native FastAPI Auth (JWT + bcrypt).
 
 A very small first-run onboarding tour highlights the main areas and controls.
 
@@ -249,14 +247,15 @@ Semantic relationship types are deferred until a concrete need appears.
 
 # 6. Recommended V1 database schema
 
-**Database: **PostgreSQL on Supabase Free. **ORM: **SQLAlchemy. **Migrations: **Alembic (recommended default).
+**Database: **PostgreSQL (Local / Docker). **ORM: **SQLAlchemy. **Migrations: **Alembic (recommended default).
 
 | Schema philosophy<br>Use explicit tables for core concepts and one polymorphic link table for cross-entity relationships. PostgreSQL remains the source of truth. Do not add a universal “everything” table just to make links easier. |
 |---|
 
 | Table | V1 columns |
 |---|---|
-| profiles | id uuid PK (same as Supabase auth user), onboarding_completed_at timestamptz nullable, created_at timestamptz |
+| users | id uuid PK, email text unique, hashed_password text, created_at timestamptz |
+| profiles | id uuid PK FK(users.id), onboarding_completed_at timestamptz nullable, created_at timestamptz |
 | goals | id uuid PK, user_id uuid, title text, status text, progress_percent smallint nullable, created_at, updated_at, completed_at nullable, archived_at nullable |
 | projects | id uuid PK, user_id uuid, title text, description text nullable, status text, created_at, updated_at, completed_at nullable, archived_at nullable |
 | notes | id uuid PK, user_id uuid, title text, content jsonb, created_at, updated_at, archived_at nullable |
@@ -266,21 +265,21 @@ Semantic relationship types are deferred until a concrete need appears.
 | library_items | id uuid PK, user_id uuid, type_id uuid FK, title text, url text nullable, description text nullable, created_at, updated_at |
 | entity_links | id uuid PK, user_id uuid, source_type text, source_id uuid, target_type text, target_id uuid, created_at |
 
-**Security rule: **The client must never choose an arbitrary user_id. FastAPI derives the authenticated user from the Supabase JWT and scopes every query/mutation to that user.
+**Security rule: **The client must never choose an arbitrary user_id. FastAPI derives the authenticated user from the verified JWT and scopes every query/mutation to that user.
 
 **Polymorphic link caveat: **entity_links cannot enforce a normal foreign key across multiple target tables. V1 should validate source/target ownership and existence in the API layer and prevent duplicate links.
 
 # 7. Technical architecture
 
-| Browser  │  ├── Next.js / React UI  │      ├── Tailwind CSS  │      ├── shadcn/ui (recommended UI primitives)  │      ├── TanStack Query  │      ├── React Hook Form + Zod  │      ├── BlockNote  │      ├── Rough.js  │      └── Rough Notation  │  ├── Supabase Auth  ← email + password + verification  │        │  │        └── JWT  │  └── FastAPI API (Vercel)           ├── verify JWT           ├── business/lifecycle rules           ├── SQLAlchemy           └── PostgreSQL (Supabase) |
+| Browser  │  ├── Next.js / React UI  │      ├── Tailwind CSS  │      ├── shadcn/ui (recommended UI primitives)  │      ├── TanStack Query  │      ├── React Hook Form + Zod  │      ├── BlockNote  │      ├── Rough.js  │      └── Rough Notation  │  └── FastAPI API           ├── /api/v1/auth (login, register, me)           ├── verify JWT           ├── business/lifecycle rules           ├── SQLAlchemy           └── PostgreSQL (Docker / Local) |
 |---|
 
 | Concern | Decision |
 |---|---|
-| Frontend | Next.js + React, deployed on Vercel. |
-| Backend | FastAPI, deployed on Vercel. All application data writes go through the API. |
-| Database | Supabase PostgreSQL Free; server is the source of truth. |
-| Authentication | Supabase Auth Free; email + password only for V1. |
+| Frontend | Next.js + React. |
+| Backend | FastAPI. All application data writes go through the API. |
+| Database | PostgreSQL; server is the source of truth. |
+| Authentication | Native FastAPI Auth (JWT + bcrypt); free & unlimited, self-hosted. |
 | Client data fetching | TanStack Query for server state/cache; ordinary React state for local UI state. |
 | Forms/validation | React Hook Form + Zod on the frontend; Pydantic validation on FastAPI. |
 | Editor | BlockNote. |

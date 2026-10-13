@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: continuum-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tracker_db}
+    ports:
+      - "5434:5432"
+    volumes:
+      - continuum_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tracker_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      network: host
+    container_name: continuum-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/tracker_db
+      JWT_SECRET: ${JWT_SECRET:-tracker-dev-secret-change-in-production-min32chars}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 10080
+      PYTHONPATH: /app
+      ENVIRONMENT: development
+      PROJECT_NAME: "Continuum API"
+      BACKEND_CORS_ORIGINS: '["http://localhost:3100","http://127.0.0.1:3100"]'
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+    ports:
+      - "8100:8100"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.dev
+      network: host
+    container_name: continuum-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8100
+      PORT: 3100
+      HOSTNAME: "0.0.0.0"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+      - /app/frontend/.next
+    ports:
+      - "3100:3100"
+
+volumes:
+  continuum_pgdata:

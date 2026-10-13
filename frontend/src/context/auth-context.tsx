@@ -7,83 +7,118 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
+import { apiClient } from "@/lib/api-client";
+import {
+  type AuthUser,
+  type AuthResponse,
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+} from "@/lib/auth";
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  token: string | null;
   isLoading: boolean;
+  login: (email: string, password: string) => Promise<AuthResponse>;
+  register: (email: string, password: string) => Promise<AuthResponse>;
   signOut: () => Promise<void>;
-  refreshSession: () => Promise<Session | null>;
+  refreshProfile: () => Promise<AuthUser | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [supabase] = useState(() => createClient());
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setTokenState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function getInitialSession() {
+    async function initAuth() {
+      const storedToken = getAuthToken();
+      if (!storedToken) {
+        setIsLoading(false);
+        return;
+      }
+
+      setTokenState(storedToken);
       try {
-        const {
-          data: { session: initialSession },
-        } = await supabase.auth.getSession();
-        setSession(initialSession);
-        setUser(initialSession?.user ?? null);
-      } catch (error) {
-        console.error("Failed to fetch initial session:", error);
+        const profile = await apiClient<AuthUser>("/api/v1/auth/me");
+        setUser(profile);
+      } catch (err) {
+        console.warn("Session token expired or invalid:", err);
+        removeAuthToken();
+        setTokenState(null);
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
     }
 
-    getInitialSession();
+    initAuth();
+  }, []);
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-      setIsLoading(false);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
-
-  const signOut = async () => {
+  const login = async (email: string, password: string): Promise<AuthResponse> => {
     setIsLoading(true);
     try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setSession(null);
+      const data = await apiClient<AuthResponse>("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      setAuthToken(data.access_token);
+      setTokenState(data.access_token);
+      setUser(data.user);
+      return data;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const refreshSession = async () => {
-    const {
-      data: { session: refreshedSession },
-    } = await supabase.auth.getSession();
-    setSession(refreshedSession);
-    setUser(refreshedSession?.user ?? null);
-    return refreshedSession;
+  const register = async (
+    email: string,
+    password: string
+  ): Promise<AuthResponse> => {
+    setIsLoading(true);
+    try {
+      const data = await apiClient<AuthResponse>("/api/v1/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      setAuthToken(data.access_token);
+      setTokenState(data.access_token);
+      setUser(data.user);
+      return data;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const signOut = async () => {
+    removeAuthToken();
+    setTokenState(null);
+    setUser(null);
+  };
+
+  const refreshProfile = async (): Promise<AuthUser | null> => {
+    try {
+      const profile = await apiClient<AuthUser>("/api/v1/auth/me");
+      setUser(profile);
+      return profile;
+    } catch {
+      return null;
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        session,
+        token,
         isLoading,
+        login,
+        register,
         signOut,
-        refreshSession,
+        refreshProfile,
       }}
     >
       {children}

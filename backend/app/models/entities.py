@@ -17,11 +17,27 @@ from sqlalchemy.sql import func
 from app.db.session import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 
-    # Profile id corresponds directly to the Supabase Auth user id
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Profile id corresponds directly to user.id
+    id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
     onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

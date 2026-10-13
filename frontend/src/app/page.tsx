@@ -46,7 +46,7 @@ export default function Home() {
         <div className="rounded-lg border bg-card p-4 text-left text-xs space-y-2 text-card-foreground">
           <div className="font-semibold text-primary">Authentication Boundary (M1)</div>
           <div className="text-muted-foreground">
-            Supabase Auth &rarr; Next.js Session &rarr; Bearer JWT &rarr; FastAPI Token Verification &rarr; User Scoped Queries
+            FastAPI Auth &rarr; Bearer JWT &rarr; PostgreSQL Tenant Isolation &rarr; User Scoped Queries
           </div>
         </div>
       </div>

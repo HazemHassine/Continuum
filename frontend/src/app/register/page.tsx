@@ -1,43 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/context/auth-context";
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { register } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const supabase = createClient();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccessMessage(null);
     setLoading(true);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (signUpError) {
-        setError(signUpError.message);
-        return;
-      }
-
-      setSuccessMessage(
-        "Account created! Please check your email to verify your account before logging in."
-      );
+      await register(email, password);
+      router.push("/dashboard");
+      router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      setError(err instanceof Error ? err.message : "Failed to register account");
     } finally {
       setLoading(false);
     }
@@ -56,12 +42,6 @@ export default function RegisterPage() {
         {error && (
           <div className="rounded-md bg-destructive/15 p-3 text-xs text-destructive">
             {error}
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="rounded-md bg-green-500/15 p-3 text-xs text-green-700 dark:text-green-400">
-            {successMessage}
           </div>
         )}
 

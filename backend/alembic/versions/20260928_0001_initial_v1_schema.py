@@ -21,10 +21,30 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # 0. users
+    op.create_table(
+        "users",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("hashed_password", sa.String(length=255), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    op.create_index("ix_users_email", "users", ["email"], unique=True)
+
     # 1. profiles
     op.create_table(
         "profiles",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("onboarding_completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
@@ -249,3 +269,4 @@ def downgrade() -> None:
     op.drop_table("projects")
     op.drop_table("goals")
     op.drop_table("profiles")
+    op.drop_table("users")

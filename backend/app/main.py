@@ -27,7 +27,7 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/")
 def root():
     return {
-        "message": "Welcome to Tracker API",
+        "message": "Welcome to Continuum API",
         "docs": "/api/v1/docs",
         "health": "/api/v1/health",
     }

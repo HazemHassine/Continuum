@@ -63,13 +63,12 @@ def create_auth_token():
     def _create_token(
         user_id: str | uuid.UUID,
         email: str = "test@example.com",
-        secret: str = settings.SUPABASE_JWT_SECRET,
+        secret: str = settings.JWT_SECRET,
     ) -> str:
         payload = {
             "sub": str(user_id),
             "email": email,
             "role": "authenticated",
-            "aud": "authenticated",
         }
         return jwt.encode(payload, secret, algorithm="HS256")
 

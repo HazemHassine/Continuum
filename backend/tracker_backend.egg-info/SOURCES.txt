@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 app/main.py
 app/api/v1/router.py
+app/api/v1/endpoints/auth.py
 app/api/v1/endpoints/health.py
 app/core/config.py
 app/core/security.py
@@ -9,6 +10,8 @@ app/db/base.py
 app/db/session.py
 app/models/__init__.py
 app/models/entities.py
+app/schemas/auth.py
+tests/test_auth.py
 tests/test_health.py
 tracker_backend.egg-info/PKG-INFO
 tracker_backend.egg-info/SOURCES.txt
