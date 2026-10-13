@@ -51,7 +51,7 @@ class Goal(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     title = Column(Text, nullable=False)
     status = Column(String(50), nullable=False, default="active")  # active | completed
-    progress = Column(SmallInteger, nullable=True)  # 0 to 100
+    progress_percent = Column(SmallInteger, nullable=True)  # 0 to 100
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -62,7 +62,7 @@ class Goal(Base):
         nullable=False,
     )
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    archive_at = Column(DateTime(timezone=True), nullable=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Project(Base):
@@ -84,8 +84,8 @@ class Project(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    closed_at = Column(DateTime(timezone=True), nullable=True)
-    archive_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Note(Base):

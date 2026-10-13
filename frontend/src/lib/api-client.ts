@@ -29,7 +29,9 @@ export async function apiClient<T>(
     try {
       const parsed = JSON.parse(errorBody);
       if (parsed.detail) {
-        errorMessage = parsed.detail;
+        errorMessage = Array.isArray(parsed.detail)
+          ? parsed.detail.map((issue: { msg: string }) => issue.msg).join("; ")
+          : String(parsed.detail);
       }
     } catch {
       // Use fallback error message

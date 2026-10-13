@@ -12,11 +12,13 @@ export interface Goal {
   user_id: string;
   title: string;
   status: GoalStatus;
-  progress: number | null;
+  progress_percent: number | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
-  archive_at: string | null;
+  archived_at: string | null;
+  is_archived?: boolean;
+  in_grace_period?: boolean;
 }
 
 export interface Project {
@@ -27,8 +29,10 @@ export interface Project {
   status: ProjectStatus;
   created_at: string;
   updated_at: string;
-  closed_at: string | null;
-  archive_at: string | null;
+  completed_at: string | null;
+  archived_at: string | null;
+  is_archived?: boolean;
+  in_grace_period?: boolean;
 }
 
 export interface Note {

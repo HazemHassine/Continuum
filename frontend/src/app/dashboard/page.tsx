@@ -2,8 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useAuth } from "@/context/auth-context";
 import { apiClient } from "@/lib/api-client";
+import { GoalsSection } from "@/components/goals/goals-section";
+import { ProjectsSection } from "@/components/projects/projects-section";
 
 interface UserProfile {
   id: string;
@@ -17,13 +20,14 @@ export default function DashboardPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, signOut, isLoading: authLoading } = useAuth();
+  const [archived, setArchived] = useState(false);
 
   const {
     data: profile,
     isLoading: profileLoading,
     error: profileError,
   } = useQuery<UserProfile>({
-    queryKey: ["user-profile"],
+    queryKey: ["user-profile", user?.id],
     queryFn: () => apiClient<UserProfile>("/api/v1/auth/me"),
     enabled: !!user,
   });
@@ -34,11 +38,13 @@ export default function DashboardPage() {
         method: "POST",
       }),
     onSuccess: (updatedProfile) => {
-      queryClient.setQueryData(["user-profile"], updatedProfile);
+      queryClient.setQueryData(["user-profile", user?.id], updatedProfile);
     },
   });
 
   const handleSignOut = async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
     await signOut();
     router.push("/login");
   };
@@ -122,19 +128,15 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border p-4 text-xs space-y-2">
-            <h3 className="font-semibold text-sm">Security Verification</h3>
-            <p className="text-muted-foreground">
-              All backend endpoints automatically extract the verified UUID from the token header. No client can spoof a <code className="bg-muted px-1 py-0.5 rounded">user_id</code>.
-            </p>
-          </div>
-          <div className="rounded-lg border p-4 text-xs space-y-2">
-            <h3 className="font-semibold text-sm">Next Step</h3>
-            <p className="text-muted-foreground">
-              Ready for Milestone M2: Goal &amp; Project data stores with strict ownership queries.
-            </p>
-          </div>
+        {/* Milestone 2: Goals & Projects Slices */}
+        <nav aria-label="Workspace views" className="flex gap-2">
+          <button className="rounded-md border px-3 py-2" aria-pressed={!archived} onClick={() => setArchived(false)}>Workspace</button>
+          <button className="rounded-md border px-3 py-2" aria-pressed={archived} onClick={() => setArchived(true)}>Archive</button>
+        </nav>
+        {archived && <p className="text-sm text-muted-foreground">Completed goals and completed or abandoned projects move here after two days.</p>}
+        <div className="grid gap-6 md:grid-cols-2">
+          <GoalsSection key={`goals-${user?.id}-${archived}`} archived={archived} />
+          <ProjectsSection key={`projects-${user?.id}-${archived}`} archived={archived} />
         </div>
       </main>
     </div>
