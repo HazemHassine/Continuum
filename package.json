@@ -2,6 +2,11 @@
   "name": "tracker-monorepo",
   "version": "1.0.0",
   "private": true,
+  "pnpm": {
+    "overrides": {
+      "prosemirror-view": "1.37.2"
+    }
+  },
   "scripts": {
     "dev": "docker compose up",
     "dev:local": "concurrently -n db,backend,frontend -c green,blue,magenta \"docker compose up db\" \"pnpm dev:backend\" \"pnpm dev:frontend\"",

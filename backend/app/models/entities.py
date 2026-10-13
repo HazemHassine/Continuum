@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     Date,
@@ -94,7 +95,9 @@ class Note(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     title = Column(Text, nullable=False, default="Untitled")
-    content = Column(JSONB, nullable=False, default=list)  # BlockNote document JSON
+    content = Column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=list
+    )
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -113,7 +116,7 @@ class StickyNote(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     content = Column(Text, nullable=False, default="")
-    color_variant = Column(Text, nullable=True)
+    color_token = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -133,7 +136,7 @@ class TimelineEntry(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
-    occurred_on = Column(Date, nullable=False)
+    event_date = Column(Date, nullable=False)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -153,10 +156,13 @@ class LibraryType(Base):
         UUID(as_uuid=True), nullable=True, index=True
     )  # nullable for system defaults
     name = Column(Text, nullable=False)
+    slug = Column(Text, nullable=False)
     is_system = Column(Boolean, default=False, nullable=False)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    __table_args__ = (Index("uq_library_type_slug", "user_id", "slug", unique=True),)
 
 
 class LibraryItem(Base):
@@ -198,6 +204,15 @@ class EntityLink(Base):
     )
 
     __table_args__ = (
+        Index(
+            "uq_entity_link",
+            "user_id",
+            "source_type",
+            "source_id",
+            "target_type",
+            "target_id",
+            unique=True,
+        ),
         Index("ix_entity_links_source", "user_id", "source_type", "source_id"),
         Index("ix_entity_links_target", "user_id", "target_type", "target_id"),
     )

@@ -1,55 +1,104 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, Check, LockKeyhole } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+import {
+  Mark,
+  MountainSketch,
+  NotebookLogo,
+  Paper,
+} from "@/components/notebook/sketch";
 
 export default function Home() {
-  const { user, isLoading } = useAuth();
-
+  const { user } = useAuth();
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 text-center">
-      <div className="max-w-md space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">Continuum</h1>
-          <p className="text-sm text-muted-foreground">
-            A deliberately small, handcrafted personal tracking app for goals,
-            projects, notes, references, and life events.
+    <main className="landing">
+      <header className="landing-header">
+        <NotebookLogo />
+        <Link
+          href={user ? "/dashboard" : "/login"}
+          className="ink-button secondary"
+        >
+          {user ? "Back to your pages" : "Come back in"}
+          <ArrowRight size={13} />
+        </Link>
+      </header>
+      <div className="landing-main">
+        <div className="landing-copy">
+          <span className="eyebrow">A quieter kind of tracker</span>
+          <h1>
+            A notebook for
+            <br />
+            the life you’re
+            <br />
+            <Mark color="#d5dfc2">making.</Mark>
+          </h1>
+          <p>
+            A place for the goals you reach toward, the things you make, and the
+            thoughts you want to keep. All connected. All yours.
           </p>
-        </div>
-
-        <div className="flex items-center justify-center gap-4">
-          {!isLoading && user ? (
+          <div className="landing-cta">
             <Link
-              href="/dashboard"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="ink-button"
+              href={user ? "/dashboard" : "/register"}
             >
-              Go to Dashboard
+              {user ? "Open your notebook" : "Start your notebook"}
+              <ArrowRight size={15} />
             </Link>
-          ) : (
-            <>
-              <Link
-                href="/login"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/register"
-                className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
-              >
-                Create Account
-              </Link>
-            </>
-          )}
-        </div>
-
-        <div className="rounded-lg border bg-card p-4 text-left text-xs space-y-2 text-card-foreground">
-          <div className="font-semibold text-primary">Authentication Boundary (M1)</div>
-          <div className="text-muted-foreground">
-            FastAPI Auth &rarr; Bearer JWT &rarr; PostgreSQL Tenant Isolation &rarr; User Scoped Queries
+            <span className="handwriting">No perfect pages required. ↗</span>
           </div>
+          <span className="form-hint flex items-center gap-2">
+            <LockKeyhole size={11} /> Personal. Private. At your own pace.
+          </span>
+        </div>
+        <div
+          className="landing-preview"
+          aria-label="An illustrated notebook page"
+        >
+          <Paper>
+            <span className="eyebrow">A page of possibilities</span>
+            <h2>Make room for what matters.</h2>
+            <div className="preview-item">
+              <span className="preview-checkbox bg-[#e2ead5]">
+                <Check size={12} />
+              </span>
+              <span>Begin something small</span>
+            </div>
+            <div className="preview-item">
+              <span className="preview-checkbox" />
+              <span>Keep a good idea</span>
+            </div>
+            <div className="preview-item">
+              <span className="preview-checkbox" />
+              <span>Notice how far you’ve come</span>
+            </div>
+            <div className="progress-track mt-6">
+              <div className="progress-ink" style={{ width: "38%" }} />
+            </div>
+            <p className="preview-caption">A little, often.</p>
+            <MountainSketch className="!w-44 mt-7" />
+          </Paper>
+          <Paper tone="yellow" className="sticky-card">
+            <p className="sticky-content">
+              Maybe the point
+              <br />
+              isn’t to do more.
+              <br />
+              It’s to make it
+              <br />
+              mean something.
+            </p>
+            <span className="record text-[10px] text-[#a59964] mt-4 block">
+              a thought in the margin
+            </span>
+          </Paper>
         </div>
       </div>
+      <footer className="landing-bottom">
+        <span>Goals · Projects · Notes · Library · Timeline</span>
+        <span className="handwriting">“A tracker for the life I want.”</span>
+      </footer>
     </main>
   );
 }

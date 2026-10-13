@@ -49,7 +49,7 @@ export interface StickyNote {
   id: string;
   user_id: string;
   content: string;
-  color_variant: string | null;
+  color_token: string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -60,12 +60,13 @@ export interface TimelineEntry {
   user_id: string;
   title: string;
   description: string | null;
-  occurred_on: string;
+  event_date: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface LibraryType {
+  slug: string;
   id: string;
   user_id: string | null;
   name: string;
