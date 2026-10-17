@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -69,6 +70,8 @@ def create_auth_token():
             "sub": str(user_id),
             "email": email,
             "role": "authenticated",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
         }
         return jwt.encode(payload, secret, algorithm="HS256")
 

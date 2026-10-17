@@ -3,6 +3,13 @@ import { getAuthToken } from "./auth";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -36,7 +43,7 @@ export async function apiClient<T>(
     } catch {
       // Use fallback error message
     }
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status);
   }
 
   if (response.status === 204) return undefined as T;

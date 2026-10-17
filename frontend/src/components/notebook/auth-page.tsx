@@ -8,6 +8,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+import { postLoginPath } from "@/lib/auth";
 import { Mark, NotebookLogo, Paper } from "./sketch";
 
 const schema = z.object({
@@ -42,11 +43,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
       const redirect = new URLSearchParams(window.location.search).get(
         "redirectTo",
       );
-      router.replace(
-        redirect?.startsWith("/") && !redirect.startsWith("//")
-          ? redirect
-          : "/dashboard",
-      );
+      router.replace(postLoginPath(redirect));
       router.refresh();
     } catch (error) {
       setError(

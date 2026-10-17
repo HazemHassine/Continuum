@@ -7,14 +7,12 @@ export async function middleware(request: NextRequest) {
   // Protect /dashboard and other authenticated app routes
   if (!token && pathname.startsWith("/dashboard")) {
     const redirectUrl = new URL("/login", request.url);
-    redirectUrl.searchParams.set("redirectTo", pathname);
+    redirectUrl.searchParams.set("redirectTo", pathname + request.nextUrl.search);
     return NextResponse.redirect(redirectUrl);
   }
 
-  // If already authenticated and navigating to /login or /register, redirect to /dashboard
-  if (token && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
+  // Cookie presence alone does not prove a session is valid. Leave auth pages
+  // reachable so a stale cookie cannot trap someone in a redirect loop.
 
   return NextResponse.next();
 }

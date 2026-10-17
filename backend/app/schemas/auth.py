@@ -1,7 +1,8 @@
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserProfileResponse(BaseModel):
@@ -14,14 +15,28 @@ class UserProfileResponse(BaseModel):
     created_at: datetime
 
 
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-
-
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=255)
+    password: str = Field(min_length=1, max_length=72)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("Use a valid email address.")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Use a password of 72 bytes or fewer.")
+        return value
+
+
+class RegisterRequest(LoginRequest):
+    password: str = Field(min_length=6, max_length=72)
 
 
 class TokenResponse(BaseModel):

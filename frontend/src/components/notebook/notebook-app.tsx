@@ -12,22 +12,20 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
-  ChevronRight,
   Clock3,
   FileText,
   Flag,
   FolderOpen,
-  Home,
   Link2,
   LogOut,
-  Pencil,
   Plus,
+  Pencil,
   Search,
   StickyNote as StickyIcon,
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
-import { apiClient } from "@/lib/api-client";
+import { ApiError, apiClient } from "@/lib/api-client";
 import {
   getGoals,
   getProjects,
@@ -51,62 +49,27 @@ import type {
   StickyNote,
   TimelineEntry,
 } from "@/types/domain";
-import { NotebookLogo, MountainSketch, Paper, Mark } from "./sketch";
+import { NotebookLogo, Paper } from "./sketch";
 import { NotebookDialog } from "./dialog";
 import { EntityEditor, type EditableEntity } from "./entity-editor";
 import { Connections, otherEnd } from "./connections";
 
-const NoteEditor = dynamic(() => import("./note-editor"), { ssr: false });
+const NoteEditor = dynamic(() => import("./note-editor"), {
+  ssr: false,
+  loading: () => <p className="form-hint" role="status">Loading note…</p>,
+});
 const pages = [
-  { view: "today", label: "Today", icon: Home },
-  { view: "goals", label: "Goals", icon: Flag },
-  { view: "projects", label: "Projects", icon: FolderOpen },
-  { view: "notes", label: "Notes", icon: FileText },
-  { view: "library", label: "Library", icon: BookOpen },
-  { view: "timeline", label: "Timeline", icon: Clock3 },
-  { view: "archive", label: "Archive", icon: Archive },
+  { view: "today", label: "Today" },
+  { view: "goals", label: "Goals" },
+  { view: "projects", label: "Projects" },
+  { view: "notes", label: "Notes" },
+  { view: "library", label: "Library" },
+  { view: "timeline", label: "Timeline" },
+  { view: "archive", label: "Archive" },
 ] as const;
-const headings: Record<
-  View,
-  { title: string; subtitle: string; margin: string }
-> = {
-  today: {
-    title: "A little space for your life.",
-    subtitle: "What matters now, and the thoughts along the way.",
-    margin: "One page at a time.",
-  },
-  goals: {
-    title: "Things worth reaching for.",
-    subtitle: "A direction, not a demand. Small steps count.",
-    margin: "Enjoy the climb.",
-  },
-  projects: {
-    title: "Ideas, becoming real.",
-    subtitle: "Make room for the work you want to put into the world.",
-    margin: "A little, often.",
-  },
-  notes: {
-    title: "Leave a little ink.",
-    subtitle:
-      "Thinking out loud, on paper. Save the things you don’t want to lose.",
-    margin: "Room to think.",
-  },
-  library: {
-    title: "A shelf of good things.",
-    subtitle: "Books, films, ideas, and things that open a window.",
-    margin: "Stay curious.",
-  },
-  timeline: {
-    title: "The story so far.",
-    subtitle:
-      "A few moments you chose to remember. Your history, in your words.",
-    margin: "Look how far.",
-  },
-  archive: {
-    title: "Pages you've turned.",
-    subtitle: "Finished work and saved thoughts. Still part of the story.",
-    margin: "Nothing is wasted.",
-  },
+const sectionDescriptions: Partial<Record<View, string>> = {
+  timeline: "Moments you choose to remember.",
+  archive: "Completed work and archived notes.",
 };
 const typeNames: Record<EntityType, string> = {
   goal: "Goal",
@@ -137,7 +100,6 @@ function shortDate(date: string) {
   ).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 function Empty({
-  icon: Icon,
   title,
   description,
   action,
@@ -151,7 +113,6 @@ function Empty({
 }) {
   return (
     <div className="empty-state">
-      <Icon size={25} strokeWidth={1.2} />
       <h3>{title}</h3>
       <p>{description}</p>
       {action && onAdd && (
@@ -165,34 +126,30 @@ function Empty({
 }
 function Section({
   title,
-  icon: Icon,
   view,
   children,
   className = "",
-  tone,
 }: {
   title: string;
   icon: typeof Flag;
   view?: View;
   children: ReactNode;
   className?: string;
-  tone?: string;
 }) {
   return (
-    <Paper className={className} tone={tone}>
+    <section className={`daily-section ${className}`}>
       <div className="section-heading">
         <div className="section-title">
-          <Icon />
           <h2>{title}</h2>
         </div>
         {view && (
           <Link href={`/dashboard?view=${view}`} className="view-all">
-            All pages <ArrowUpRight size={12} />
+            Open <ArrowUpRight size={12} />
           </Link>
         )}
       </div>
       {children}
-    </Paper>
+    </section>
   );
 }
 function LinkedChips({
@@ -215,7 +172,7 @@ function LinkedChips({
         return (
           <span className="link-chip" key={`${target!.type}:${target!.id}`}>
             <Link2 size={10} />
-            <span>{found?.title ?? "Archived page"}</span>
+            <span>{found?.title ?? "Connected entry"}</span>
           </span>
         );
       })}
@@ -229,19 +186,36 @@ function NotebookWorkspace() {
   const view: View = pages.some((page) => page.view === requested)
     ? (requested as View)
     : "today";
-  const { user, isLoading: authLoading, signOut, refreshProfile } = useAuth();
+  const {
+    user,
+    isLoading: authLoading,
+    sessionError,
+    retrySession,
+    signOut,
+    refreshProfile,
+  } = useAuth();
   const cache = useQueryClient();
   const queryKey = ["notebook", user?.id];
-  const options = { enabled: !!user, refetchInterval: 30_000 };
+  const [modal, setModal] = useState<Modal | null>(null);
+  const options = {
+    enabled: !!user,
+    refetchOnWindowFocus: true,
+    retry: (failures: number, error: Error) =>
+      !(error instanceof ApiError && error.status >= 400 && error.status < 500) &&
+      failures < 1,
+  };
+  const needsArchivedNotes = view === "archive" || modal?.kind === "links";
   const goalsQuery = useQuery({
     queryKey: [...queryKey, "goals"],
     queryFn: () => getGoals("all"),
     ...options,
+    refetchInterval: 30_000,
   });
   const projectsQuery = useQuery({
     queryKey: [...queryKey, "projects"],
     queryFn: () => getProjects("all"),
     ...options,
+    refetchInterval: 30_000,
   });
   const notesQuery = useQuery({
     queryKey: [...queryKey, "notes"],
@@ -252,6 +226,7 @@ function NotebookWorkspace() {
     queryKey: [...queryKey, "archived-notes"],
     queryFn: () => workspaceApi.notes(true),
     ...options,
+    enabled: !!user && needsArchivedNotes,
   });
   const stickyQuery = useQuery({
     queryKey: [...queryKey, "sticky"],
@@ -262,6 +237,7 @@ function NotebookWorkspace() {
     queryKey: [...queryKey, "archived-sticky"],
     queryFn: () => workspaceApi.stickies(true),
     ...options,
+    enabled: !!user && needsArchivedNotes,
   });
   const libraryQuery = useQuery({
     queryKey: [...queryKey, "library"],
@@ -284,8 +260,8 @@ function NotebookWorkspace() {
     ...options,
   });
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [filter, setFilter] = useState("all");
-  const [modal, setModal] = useState<Modal | null>(null);
   const [toast, setToast] = useState("");
   const [step, setStep] = useState(0);
   const [onboardingError, setOnboardingError] = useState("");
@@ -347,14 +323,14 @@ function NotebookWorkspace() {
       await action();
       return message;
     },
-    onSuccess: (message) => {
-      cache.invalidateQueries({ queryKey: ["notebook", user?.id] });
+    onSuccess: async (message) => {
+      await cache.invalidateQueries({ queryKey: ["notebook", user?.id] });
       setToast(message);
     },
   });
   useEffect(() => {
-    if (!authLoading && !user) router.replace("/login");
-  }, [authLoading, user, router]);
+    if (!authLoading && !user && !sessionError) router.replace("/login");
+  }, [authLoading, user, sessionError, router]);
   useEffect(() => {
     if (user && !user.onboarding_completed_at && !onboardShown.current) {
       onboardShown.current = true;
@@ -364,6 +340,7 @@ function NotebookWorkspace() {
   useEffect(() => {
     setSearch("");
     setFilter("all");
+    setSearchOpen(false);
   }, [view]);
   useEffect(() => {
     if (!toast) return;
@@ -371,9 +348,17 @@ function NotebookWorkspace() {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
+    if (searchOpen) searchInput.current?.focus();
+  }, [searchOpen]);
+  useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "k" &&
+        !document.querySelector("dialog[open]")
+      ) {
         event.preventDefault();
+        setSearchOpen(true);
         searchInput.current?.focus();
       }
     };
@@ -392,8 +377,33 @@ function NotebookWorkspace() {
     timelineQuery,
     linksQuery,
   ];
-  const loading = queries.some((query) => query.isLoading);
-  const queryError = queries.find((query) => query.error)?.error;
+  const pageQueries = {
+    today: [
+      goalsQuery, projectsQuery, notesQuery, stickyQuery, libraryQuery,
+      typesQuery, timelineQuery, linksQuery,
+    ],
+    goals: [goalsQuery, linksQuery],
+    projects: [projectsQuery, linksQuery],
+    notes: [notesQuery, linksQuery],
+    library: [libraryQuery, typesQuery, linksQuery],
+    timeline: [timelineQuery, linksQuery],
+    archive: [
+      goalsQuery, projectsQuery, archivedNotesQuery, archivedStickyQuery, linksQuery,
+    ],
+  }[view];
+  const loading = pageQueries.some((query) => query.isPending);
+  const pageUnavailable = pageQueries.some(
+    (query) => query.isError && query.data === undefined,
+  );
+  const queryError = pageQueries.find((query) => query.error)?.error;
+  const sessionExpired = queryError instanceof ApiError && queryError.status === 401;
+  const retryPage = () => {
+    pageQueries.forEach((query) => {
+      void query.refetch();
+    });
+  };
+  const connectionsLoading = queries.some((query) => query.isPending);
+  const connectionsError = queries.find((query) => query.error)?.error;
   const match = (title: string, extra = "") =>
     (title + " " + extra).toLowerCase().includes(search.toLowerCase().trim());
   const goalList = activeGoals.filter(
@@ -416,9 +426,6 @@ function NotebookWorkspace() {
   const timelineList = timeline.filter((item) =>
     match(item.title, item.description ?? ""),
   );
-  const name = user?.email?.split("@")[0].split(/[._-]/)[0] ?? "friend";
-  const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-  const page = headings[view];
   const archive = [
     ...goals
       .filter((item) => item.is_archived)
@@ -451,6 +458,58 @@ function NotebookWorkspace() {
         (filter === "all" || entry.type === filter),
     )
     .sort((a, b) => b.date.localeCompare(a.date));
+  const totalArchiveCount =
+    goals.filter((item) => item.is_archived).length +
+    projects.filter((item) => item.is_archived).length +
+    archiveNotes.length +
+    archiveStickies.length;
+  const entryCount = {
+    today:
+      activeGoals.length +
+      activeProjects.length +
+      notes.length +
+      stickies.length +
+      library.length +
+      timeline.length,
+    goals: activeGoals.length,
+    projects: activeProjects.length,
+    notes: notes.length,
+    library: library.length,
+    timeline: timeline.length,
+    archive: totalArchiveCount,
+  }[view];
+  const showSearch = entryCount >= 6 || searchOpen || !!search;
+  const filterOptions =
+    view === "goals"
+      ? [
+          ["all", "All statuses"],
+          ["active", "Active"],
+          ["completed", "Completed"],
+        ]
+      : view === "projects"
+        ? [
+            ["all", "All statuses"],
+            ["active", "Active"],
+            ["paused", "Paused"],
+            ["completed", "Completed"],
+            ["abandoned", "Abandoned"],
+          ]
+        : view === "archive"
+          ? [
+              ["all", "All types"],
+              ["goal", "Goals"],
+              ["project", "Projects"],
+              ["note", "Notes"],
+              ["sticky_note", "Sticky notes"],
+            ]
+          : view === "library"
+            ? [
+                ["all", "All types"],
+                ...types.map((type) => [type.id, type.name]),
+              ]
+            : [];
+  const showFilter =
+    filterOptions.length > 0 && (entryCount > 1 || filter !== "all");
   const add = (type: EntityType) => {
     mutation.reset();
     setModal({ kind: "edit", type });
@@ -484,6 +543,7 @@ function NotebookWorkspace() {
     router.replace("/login");
   }
   async function finishOnboarding() {
+    if (onboardingBusy) return;
     setOnboardingBusy(true);
     setOnboardingError("");
     try {
@@ -500,20 +560,13 @@ function NotebookWorkspace() {
   }
   function controls(type: EntityType, item: EditableEntity) {
     return (
-      <div className="flex shrink-0">
-        <button
-          className="icon-button"
-          aria-label={`Edit ${"title" in item ? item.title : "sticky note"}`}
-          onClick={() => edit(type, item)}
-        >
-          <Pencil size={13} />
-        </button>
+      <div className="entry-controls">
         <button
           className="icon-button"
           aria-label={`Connect ${"title" in item ? item.title : "sticky note"}`}
           onClick={() => connect(type, item)}
         >
-          <Link2 size={13} />
+          <Link2 size={14} />
         </button>
       </div>
     );
@@ -524,14 +577,15 @@ function NotebookWorkspace() {
         <div className="entity-title-row">
           <button
             className={`entity-title ${goal.status === "completed" ? "completed-title" : ""}`}
+            aria-label={`Edit ${goal.title}`}
             onClick={() => edit("goal", goal)}
           >
             {goal.title}
           </button>
           {controls("goal", goal)}
         </div>
-        {goal.progress_percent !== null && (
-          <>
+        {goal.progress_percent !== null && goal.status === "active" && (
+          <div className="goal-measure">
             <div
               className="progress-track"
               role="progressbar"
@@ -545,29 +599,19 @@ function NotebookWorkspace() {
                 style={{ width: `${goal.progress_percent}%` }}
               />
             </div>
-            <div className="progress-label">
-              <span>
-                {goal.status === "completed"
-                  ? "A little victory"
-                  : "Little by little"}
-              </span>
-              <span>{goal.progress_percent}%</span>
-            </div>
-          </>
+            <span>{goal.progress_percent}%</span>
+          </div>
         )}
-        <div className="entity-meta">
-          <span className={`stamp ${goal.status}`}>{goal.status}</span>
-          {goal.in_grace_period && (
-            <span>
-              Archives{" "}
-              {shortDate(
-                new Date(
-                  new Date(goal.completed_at!).getTime() + 172800000,
-                ).toISOString(),
-              )}
-            </span>
-          )}
-        </div>
+        {goal.in_grace_period && (
+          <p className="entry-archive-date">
+            Archives{" "}
+            {shortDate(
+              new Date(
+                new Date(goal.completed_at!).getTime() + 172800000,
+              ).toISOString(),
+            )}
+          </p>
+        )}
         {full && (
           <>
             <LinkedChips
@@ -587,17 +631,18 @@ function NotebookWorkspace() {
                           goal.status === "active" ? "completed" : "active",
                       }),
                     goal.status === "active"
-                      ? "A little victory. Well done."
-                      : "Back on your page.",
+                      ? "Goal completed."
+                      : "Goal reopened.",
                   )
                 }
               >
                 {goal.status === "active" ? (
                   <>
-                    <Check size={13} /> Complete goal
+                    <Check size={13} />
+                    Complete
                   </>
                 ) : (
-                  <>↶ Reopen goal</>
+                  <>↶ Reopen</>
                 )}
               </button>
             </div>
@@ -612,51 +657,55 @@ function NotebookWorkspace() {
         <div className="entity-title-row">
           <button
             className={`entity-title ${project.status === "completed" || project.status === "abandoned" ? "completed-title" : ""}`}
+            aria-label={`Edit ${project.title}`}
             onClick={() => edit("project", project)}
           >
             {project.title}
           </button>
-          {controls("project", project)}
-        </div>
-        <div className="entity-meta">
-          <span className={`stamp ${project.status}`}>{project.status}</span>
-          {project.in_grace_period && <span>2-day grace period</span>}
+          <div className="project-state">
+            {full ? (
+              <select
+                aria-label={`Status for ${project.title}`}
+                value={project.status}
+                disabled={mutation.isPending}
+                onChange={(event) => {
+                  const status = event.target.value as ProjectStatus;
+                  run(
+                    () => updateProject(project.id, { status }),
+                    "Project updated.",
+                  );
+                }}
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="completed">Completed</option>
+                <option value="abandoned">Abandoned</option>
+              </select>
+            ) : (
+              <span>{project.status}</span>
+            )}
+            {controls("project", project)}
+          </div>
         </div>
         {project.description && full && (
           <p className="entity-description">{project.description}</p>
         )}
+        {project.in_grace_period && (
+          <p className="entry-archive-date">
+            Archives{" "}
+            {shortDate(
+              new Date(
+                new Date(project.completed_at!).getTime() + 172800000,
+              ).toISOString(),
+            )}
+          </p>
+        )}
         {full && (
-          <>
-            <LinkedChips
-              source={{ type: "project", id: project.id, title: project.title }}
-              links={links}
-              entities={entities}
-            />
-            <div className="entity-actions">
-              <label className="form-hint flex items-center gap-2">
-                Status
-                <select
-                  className="bg-transparent border-b border-border px-1 py-1"
-                  value={project.status}
-                  disabled={mutation.isPending}
-                  onChange={(event) =>
-                    run(
-                      () =>
-                        updateProject(project.id, {
-                          status: event.target.value as ProjectStatus,
-                        }),
-                      "Project updated. Find your own pace.",
-                    )
-                  }
-                >
-                  <option value="active">Active</option>
-                  <option value="paused">Paused</option>
-                  <option value="completed">Completed</option>
-                  <option value="abandoned">Abandoned</option>
-                </select>
-              </label>
-            </div>
-          </>
+          <LinkedChips
+            source={{ type: "project", id: project.id, title: project.title }}
+            links={links}
+            entities={entities}
+          />
         )}
       </div>
     );
@@ -664,12 +713,10 @@ function NotebookWorkspace() {
   function noteCard(note: Note) {
     return (
       <Paper key={note.id} className="note-card">
-        <span className="eyebrow">A page of your own</span>
         <button className="text-left w-full" onClick={() => edit("note", note)}>
           <h3>{note.title}</h3>
           <p className="note-excerpt">
-            {notePreview(note.content) ||
-              "A title, a thought, a beginning. Open this page to keep writing."}
+            {notePreview(note.content) || "Empty note"}
           </p>
         </button>
         <LinkedChips
@@ -694,7 +741,7 @@ function NotebookWorkspace() {
               onClick={() =>
                 run(
                   () => workspaceApi.archive("notes", note.id),
-                  "Page tucked into the Archive.",
+                  "Note archived.",
                 )
               }
             >
@@ -732,10 +779,7 @@ function NotebookWorkspace() {
             disabled={mutation.isPending}
             aria-label="Turn sticky note into a full note"
             onClick={() =>
-              run(
-                () => workspaceApi.promote(sticky.id),
-                "Thought promoted to a Note. Find it on your Notes page.",
-              )
+              run(() => workspaceApi.promote(sticky.id), "Saved as a Note.")
             }
           >
             <FileText size={12} />
@@ -747,7 +791,7 @@ function NotebookWorkspace() {
             onClick={() =>
               run(
                 () => workspaceApi.archive("sticky-notes", sticky.id),
-                "Thought tucked into the Archive.",
+                "Sticky note archived.",
               )
             }
           >
@@ -792,7 +836,6 @@ function NotebookWorkspace() {
         />
         <div className="note-card-footer">
           <span>Added {shortDate(item.created_at)}</span>
-          <span>Kept for later</span>
         </div>
       </Paper>
     );
@@ -804,6 +847,25 @@ function NotebookWorkspace() {
     library: "library_item",
     timeline: "timeline_entry",
   };
+  if (!authLoading && !user && sessionError)
+    return (
+      <main className="auth-shell">
+        <div className="auth-content">
+          <NotebookLogo />
+          <p className="error-note mt-6" role="alert">
+            {sessionError}
+          </p>
+          <div className="form-actions">
+            <button className="ink-button" onClick={retrySession}>
+              Try again
+            </button>
+            <button className="ink-button ghost" onClick={logout}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   if (authLoading || !user)
     return (
       <div className="auth-shell">
@@ -825,30 +887,23 @@ function NotebookWorkspace() {
       </a>
       <aside className="notebook-sidebar">
         <NotebookLogo />
-        <p className="sidebar-caption eyebrow">Your notebook</p>
         <nav className="notebook-nav" aria-label="Notebook sections">
-          {pages.map((page) => (
+          {pages.map((page, index) => (
             <Link
               key={page.view}
               href={`/dashboard?view=${page.view}`}
               className={view === page.view ? "active" : ""}
               aria-current={view === page.view ? "page" : undefined}
             >
-              <page.icon size={16} strokeWidth={1.5} />
+              <span className="index-number">
+                {String(index + 1).padStart(2, "0")}
+              </span>
               {page.label}
             </Link>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-quote">
-            <span className="eyebrow">A small reminder</span>
-            <p className="handwriting">
-              A little progress.
-              <br />A little presence.
-            </p>
-          </div>
           <div className="sidebar-account">
-            <span className="avatar">{displayName.slice(0, 1)}</span>
             <span className="account-name">{user.email}</span>
             <button
               className="icon-button"
@@ -861,148 +916,122 @@ function NotebookWorkspace() {
         </div>
       </aside>
       <div className="notebook-main">
-        <header className="notebook-topbar">
-          <div className="breadcrumb">
-            <Home size={12} />
-            <span>your notebook</span>
-            <ChevronRight size={12} />
-            <strong>{pages.find((page) => page.view === view)?.label}</strong>
-          </div>
-          <div className="topbar-actions">
-            <span className="private-indicator">
-              <i /> Just for you
-            </span>
-            <button
-              className="ink-button secondary small"
-              onClick={() => setModal({ kind: "quick" })}
-            >
-              <Plus size={13} /> A new page
-            </button>
-            <button
-              className="icon-button sm:hidden"
-              aria-label="Sign out"
-              onClick={logout}
-            >
-              <LogOut size={15} />
-            </button>
-          </div>
-        </header>
         <main id="notebook-page" className="notebook-canvas">
-          <div className="page-intro">
-            <div>
-              <span className="eyebrow">
-                {new Date().toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-              <h1>
-                {view === "today" ? (
-                  <>
-                    A little space for <Mark>your life.</Mark>
-                  </>
-                ) : (
-                  <Mark key={view} color="#bec9a5">
-                    {page.title}
-                  </Mark>
+          <header className="folio-heading">
+            <div className="folio-title">
+              <div>
+                <h1 id="notebook-heading" tabIndex={-1}>
+                  {pages.find((page) => page.view === view)?.label}
+                </h1>
+                {view === "today" && (
+                  <p className="folio-date">
+                    {new Date().toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </p>
                 )}
-              </h1>
-              <p className="intro-note">
-                {view === "today"
-                  ? `Welcome back, ${displayName}. ${page.subtitle}`
-                  : page.subtitle}
-              </p>
-            </div>
-            <div className="intro-doodle">
-              <MountainSketch />
-              <p className="handwriting">{page.margin}</p>
-            </div>
-          </div>
-          <div className="workspace-toolbar">
-            <div className="search-box">
-              <Search size={15} />
-              <input
-                ref={searchInput}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Find a thought, a project, a page…"
-                aria-label="Search your notebook"
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setSearch("");
-                }}
-              />
-              {search ? (
-                <button
-                  className="icon-button"
-                  aria-label="Clear search"
-                  onClick={() => setSearch("")}
-                >
-                  <X size={14} />
-                </button>
-              ) : (
-                <kbd>⌘ K</kbd>
+                {sectionDescriptions[view] && entryCount === 0 && (
+                  <p className="folio-date">{sectionDescriptions[view]}</p>
+                )}
+              </div>
+              {entryCount > 0 && view !== "today" && (
+                <span className="entry-count">
+                  {entryCount} {entryCount === 1 ? "entry" : "entries"}
+                </span>
               )}
             </div>
-            {createForView[view] && (
+            <div className="folio-actions">
+              {entryCount > 0 && !showSearch && (
+                <button
+                  className="icon-button"
+                  aria-label="Open search"
+                  aria-keyshortcuts="Control+k Meta+k"
+                  title="Search (Ctrl or ⌘ K)"
+                  onClick={() => setSearchOpen(true)}
+                >
+                  <Search size={15} />
+                </button>
+              )}
+              {createForView[view] && (
+                <button
+                  className="ink-button"
+                  onClick={() => add(createForView[view]!)}
+                >
+                  <Plus size={14} /> New{" "}
+                  {typeNames[createForView[view]!].toLowerCase()}
+                </button>
+              )}
+              {view === "today" && (
+                <button
+                  className="ink-button"
+                  onClick={() => setModal({ kind: "quick" })}
+                >
+                  <Plus size={14} /> Add
+                </button>
+              )}
               <button
-                className="ink-button"
-                onClick={() => add(createForView[view]!)}
+                className="icon-button mobile-signout"
+                aria-label="Sign out"
+                onClick={logout}
               >
-                <Plus size={14} /> New{" "}
-                {typeNames[createForView[view]!].toLowerCase()}
+                <LogOut size={15} />
               </button>
-            )}
-            {view === "today" && (
-              <span className="handwriting text-[21px] text-[#899675]">
-                Make yourself at home.
-              </span>
-            )}
-            {(view === "goals" ||
-              view === "projects" ||
-              view === "archive" ||
-              view === "library") && (
-              <div className="filter-tabs" aria-label="Filter pages">
-                {(view === "goals"
-                  ? [
-                      ["all", "All"],
-                      ["active", "Active"],
-                      ["completed", "Completed"],
-                    ]
-                  : view === "projects"
-                    ? [
-                        ["all", "All"],
-                        ["active", "Active"],
-                        ["paused", "Paused"],
-                        ["completed", "Completed"],
-                        ["abandoned", "Abandoned"],
-                      ]
-                    : view === "archive"
-                      ? [
-                          ["all", "All"],
-                          ["goal", "Goals"],
-                          ["project", "Projects"],
-                          ["note", "Notes"],
-                          ["sticky_note", "Stickies"],
-                        ]
-                      : [
-                          ["all", "All"],
-                          ...types.map((type) => [type.id, type.name]),
-                        ]
-                ).map(([value, label]) => (
-                  <button
-                    key={value}
-                    className={filter === value ? "active" : ""}
-                    aria-pressed={filter === value}
-                    onClick={() => setFilter(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+            </div>
+          </header>
+          {(showSearch || showFilter) && (
+            <div className="workspace-toolbar">
+              {showSearch && (
+                <div className="search-box">
+                  <Search size={14} />
+                  <input
+                    ref={searchInput}
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search"
+                    aria-label="Search your notebook"
+                    aria-keyshortcuts="Control+k Meta+k"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        setSearch("");
+                        setSearchOpen(false);
+                        document.getElementById("notebook-heading")?.focus();
+                      }
+                    }}
+                  />
+                  {search && (
+                    <button
+                      className="icon-button"
+                      aria-label="Clear search"
+                      onClick={() => setSearch("")}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+              {showFilter && (
+                <select
+                  className="page-filter"
+                  aria-label={
+                    view === "library" || view === "archive"
+                      ? "Filter by type"
+                      : "Filter by status"
+                  }
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                >
+                  {filterOptions.map(([value, label]) => (
+                    <option value={value} key={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           {mutation.error && (
             <div role="alert" className="error-note">
               {mutation.error.message}
@@ -1016,187 +1045,136 @@ function NotebookWorkspace() {
           )}
           {queryError && (
             <div role="alert" className="error-note">
-              A page couldn’t load. {queryError.message}
+              {sessionExpired
+                ? "Your session has expired. Sign in again to continue."
+                : pageUnavailable
+                  ? "This section couldn’t load. Your entries haven’t been removed."
+                  : "Couldn’t refresh this section. Showing the last loaded entries."}
               <button
                 className="ml-3 underline"
-                onClick={() => cache.invalidateQueries({ queryKey })}
+                disabled={!sessionExpired && pageQueries.some((query) => query.isFetching)}
+                onClick={sessionExpired ? logout : retryPage}
               >
-                Try again
+                {sessionExpired ? "Sign in again" : "Try again"}
               </button>
             </div>
           )}
-          {loading ? (
-            <div
-              className="dashboard-grid"
-              role="status"
-              aria-label="Loading notebook"
-            >
-              <Paper>
-                <div className="h-36 animate-pulse bg-muted/30 rounded" />
-              </Paper>
-              <Paper>
-                <div className="h-36 animate-pulse bg-muted/30 rounded" />
-              </Paper>
-            </div>
+          {pageUnavailable ? null : loading ? (
+            <p className="form-hint" role="status" aria-label="Loading notebook">
+              {pageQueries.some((query) => query.isPaused)
+                ? "Waiting for a connection…"
+                : "Loading entries…"}
+            </p>
           ) : (
             <div key={view} className="page-animation">
               {view === "today" && !search && (
-                <div className="dashboard-grid">
-                  <div className="dashboard-column">
-                    <Section title="On your mind" icon={StickyIcon}>
+                <div className="daily-page">
+                  {entryCount === 0 && (
+                    <div className="first-entry">
+                      <p>This notebook is empty.</p>
+                      <span>
+                        Add a goal, project, note, or something you want to
+                        keep.
+                      </span>
+                    </div>
+                  )}
+                  <section className="thought-area" aria-label="Sticky notes">
+                    <div className="daily-section-heading">
+                      <h2>Loose notes</h2>
+                      {stickyList.length > 0 && (
+                        <button
+                          className="text-add"
+                          onClick={() => add("sticky_note")}
+                        >
+                          <Plus size={13} /> Sticky note
+                        </button>
+                      )}
+                    </div>
+                    {stickyList.length > 0 ? (
                       <div className="sticky-board">
                         {stickyList.map(stickyCard)}
                       </div>
-                      {stickyList.length === 0 && (
-                        <Empty
-                          icon={StickyIcon}
-                          title="A thought can start anywhere."
-                          description="Catch an idea, a reminder, or a sentence you want to keep. No need to organize it yet."
-                          onAdd={() => add("sticky_note")}
-                          action="Leave a little thought"
-                        />
-                      )}
+                    ) : (
                       <button
-                        className="quick-note"
+                        className="blank-sticky"
+                        aria-label="New sticky note"
                         onClick={() => add("sticky_note")}
                       >
-                        <Plus size={13} /> Leave a thought here…
+                        <span>+ Write a thought</span>
                       </button>
-                    </Section>
-                    <Section
-                      title="In the making"
-                      icon={FolderOpen}
-                      view="projects"
-                    >
-                      {projectList.slice(0, 4).map((item) => projectRow(item))}
-                      {projectList.length === 0 && (
-                        <Empty
-                          icon={FolderOpen}
-                          title="Room for something good."
-                          description="What would you like to bring into the world?"
-                          action="Start a project"
-                          onAdd={() => add("project")}
-                        />
-                      )}
-                    </Section>
-                    <Section title="A few words" icon={FileText} view="notes">
-                      {noteList.slice(0, 3).map((note) => (
-                        <div className="entity-row" key={note.id}>
-                          <button
-                            className="entity-title"
-                            onClick={() => edit("note", note)}
-                          >
-                            {note.title}
-                          </button>
-                          <p className="note-excerpt !min-h-0 !line-clamp-2 mt-2">
-                            {notePreview(note.content) ||
-                              "Your next sentence starts here."}
-                          </p>
-                          <div className="entity-meta">
-                            {shortDate(note.updated_at)}
-                          </div>
-                        </div>
-                      ))}
-                      {noteList.length === 0 && (
-                        <Empty
-                          icon={FileText}
-                          title="Your next sentence starts here."
-                          description="A page for thinking, making sense, or simply remembering."
-                          action="Open a blank page"
-                          onAdd={() => add("note")}
-                        />
-                      )}
-                    </Section>
-                  </div>
-                  <div className="dashboard-column">
-                    <Section title="Little by little" icon={Flag} view="goals">
-                      {goalList.slice(0, 4).map((item) => goalRow(item))}
-                      {goalList.length === 0 && (
-                        <Empty
-                          icon={Flag}
-                          title="Pick a direction."
-                          description="Name something you want to reach for. Progress can be a percentage, or just showing up."
-                          action="Write a goal"
-                          onAdd={() => add("goal")}
-                        />
-                      )}
-                    </Section>
-                    <Paper tone="sage">
-                      <span className="eyebrow">A note in the margin</span>
-                      <p className="handwriting text-[28px] leading-tight my-3">
-                        You don’t have to do it all.
-                        <br />
-                        Just keep a little space
-                        <br />
-                        for what matters.
-                      </p>
-                      <div className="flex justify-between items-end">
-                        <MountainSketch className="!w-32" />
-                        <span className="handwriting text-lg text-[#91a27b]">
-                          At your own pace.
-                        </span>
-                      </div>
-                    </Paper>
-                    <Section
-                      title="On the shelf"
-                      icon={BookOpen}
-                      view="library"
-                    >
-                      {libraryList.slice(0, 3).map((item) => (
-                        <div className="entity-row" key={item.id}>
-                          <button
-                            className="entity-title"
-                            onClick={() => edit("library_item", item)}
-                          >
-                            {item.title}
-                          </button>
-                          <div className="entity-meta">
-                            <span className="stamp book">
-                              {types.find((type) => type.id === item.type_id)
-                                ?.name ?? "Reference"}
-                            </span>
-                            {item.url && (
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ml-auto"
-                                aria-label={`Open ${item.title}`}
-                              >
-                                <ArrowUpRight size={13} />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {libraryList.length === 0 && (
-                        <Empty
-                          icon={BookOpen}
-                          title="Keep something that inspires you."
-                          description="A book, a film, an article. A shelf for the things you find."
-                          action="Add to your shelf"
-                          onAdd={() => add("library_item")}
-                        />
-                      )}
-                    </Section>
-                    {timelineList.length > 0 && (
-                      <Section
-                        title="A moment to remember"
-                        icon={Clock3}
-                        view="timeline"
-                      >
-                        <p className="timeline-date">
-                          {shortDate(timelineList[0].event_date)}
-                        </p>
-                        <p className="entity-title">{timelineList[0].title}</p>
-                        {timelineList[0].description && (
-                          <p className="entity-description">
-                            {timelineList[0].description}
-                          </p>
-                        )}
-                      </Section>
                     )}
-                  </div>
+                  </section>
+                  {(goalList.length > 0 ||
+                    projectList.length > 0 ||
+                    noteList.length > 0 ||
+                    libraryList.length > 0 ||
+                    timelineList.length > 0) && (
+                    <div className="daily-entries">
+                      {goalList.length > 0 && (
+                        <Section title="Goals" icon={Flag} view="goals">
+                          {goalList.slice(0, 4).map((item) => goalRow(item))}
+                        </Section>
+                      )}
+                      {projectList.length > 0 && (
+                        <Section
+                          title="Projects"
+                          icon={FolderOpen}
+                          view="projects"
+                        >
+                          {projectList
+                            .slice(0, 4)
+                            .map((item) => projectRow(item))}
+                        </Section>
+                      )}
+                      {noteList.length > 0 && (
+                        <Section title="Notes" icon={FileText} view="notes">
+                          {noteList.slice(0, 3).map((note) => (
+                            <div className="entity-row" key={note.id}>
+                              <button
+                                className="entity-title"
+                                onClick={() => edit("note", note)}
+                              >
+                                {note.title}
+                              </button>
+                              <p className="note-excerpt !min-h-0 !line-clamp-2 mt-2">
+                                {notePreview(note.content)}
+                              </p>
+                            </div>
+                          ))}
+                        </Section>
+                      )}
+                      {libraryList.length > 0 && (
+                        <Section title="Library" icon={BookOpen} view="library">
+                          {libraryList.slice(0, 3).map((item) => (
+                            <div className="entity-row" key={item.id}>
+                              <button
+                                className="entity-title"
+                                onClick={() => edit("library_item", item)}
+                              >
+                                {item.title}
+                              </button>
+                              <span className="library-kind">
+                                {
+                                  types.find((type) => type.id === item.type_id)
+                                    ?.name
+                                }
+                              </span>
+                            </div>
+                          ))}
+                        </Section>
+                      )}
+                      {timelineList.length > 0 && (
+                        <Section title="Timeline" icon={Clock3} view="timeline">
+                          <p className="timeline-date">
+                            {shortDate(timelineList[0].event_date)}
+                          </p>
+                          <p className="entity-title">
+                            {timelineList[0].title}
+                          </p>
+                        </Section>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {view === "today" && search && (
@@ -1246,42 +1224,56 @@ function NotebookWorkspace() {
                 </>
               )}
               {view === "goals" && (
-                <div className="section-grid">
-                  {goalList.map((goal) => (
-                    <Paper key={goal.id}>{goalRow(goal, true)}</Paper>
+                <div className="entry-ledger">
+                  {goalList.map((goal, index) => (
+                    <article className="ledger-entry" key={goal.id}>
+                      <span className="ledger-number">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      {goalRow(goal, true)}
+                    </article>
                   ))}
                   {goalList.length === 0 && (
-                    <Paper>
-                      <Empty
-                        icon={Flag}
-                        title={
-                          search || filter !== "all"
-                            ? "No goals on this page."
-                            : "A direction is a good beginning."
-                        }
-                        description="Start with something small, something yours."
-                        action="Write a goal"
-                        onAdd={() => add("goal")}
-                      />
-                    </Paper>
+                    <Empty
+                      icon={Flag}
+                      title={
+                        search || filter !== "all"
+                          ? "No matching goals."
+                          : "No goals yet."
+                      }
+                      description={
+                        search || filter !== "all"
+                          ? "Try a different search or status."
+                          : "Use New goal to add one."
+                      }
+                    />
                   )}
                 </div>
               )}
               {view === "projects" && (
-                <div className="section-grid">
-                  {projectList.map((project) => (
-                    <Paper key={project.id}>{projectRow(project, true)}</Paper>
+                <div className="entry-ledger">
+                  {projectList.map((project, index) => (
+                    <article className="ledger-entry" key={project.id}>
+                      <span className="ledger-number">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      {projectRow(project, true)}
+                    </article>
                   ))}
                   {projectList.length === 0 && (
-                    <Paper>
-                      <Empty
-                        icon={FolderOpen}
-                        title="Something good starts small."
-                        description="Name the thing you'd like to make. You can figure out the rest along the way."
-                        action="Start a project"
-                        onAdd={() => add("project")}
-                      />
-                    </Paper>
+                    <Empty
+                      icon={FolderOpen}
+                      title={
+                        search || filter !== "all"
+                          ? "No matching projects."
+                          : "No projects yet."
+                      }
+                      description={
+                        search || filter !== "all"
+                          ? "Try a different search or status."
+                          : "Use New project to add one."
+                      }
+                    />
                   )}
                 </div>
               )}
@@ -1289,15 +1281,13 @@ function NotebookWorkspace() {
                 <div className="section-grid">
                   {noteList.map(noteCard)}
                   {noteList.length === 0 && (
-                    <Paper>
-                      <Empty
-                        icon={FileText}
-                        title="A blank page is an invitation."
-                        description="Write, rearrange, make a list. Save it when it feels ready."
-                        action="Open a blank page"
-                        onAdd={() => add("note")}
-                      />
-                    </Paper>
+                    <Empty
+                      icon={FileText}
+                      title={search ? "No matching notes." : "No notes yet."}
+                      description={search
+                        ? "Try a different word or clear your search."
+                        : "Use New note to start a page."}
+                    />
                   )}
                 </div>
               )}
@@ -1305,30 +1295,30 @@ function NotebookWorkspace() {
                 <div className="section-grid">
                   {libraryList.map(libraryCard)}
                   {libraryList.length === 0 && (
-                    <Paper>
-                      <Empty
-                        icon={BookOpen}
-                        title="Build a shelf of your own."
-                        description="For the things you discover. Reading, watching, learning, wondering."
-                        action="Add a good thing"
-                        onAdd={() => add("library_item")}
-                      />
-                    </Paper>
+                    <Empty
+                      icon={BookOpen}
+                      title={
+                        search || filter !== "all"
+                          ? "No matching items."
+                          : "Your Library is empty."
+                      }
+                      description={search || filter !== "all"
+                        ? "Try a different search or type."
+                        : "Use New library item to save a reference."}
+                    />
                   )}
                 </div>
               )}
               {view === "timeline" && (
                 <div className="max-w-3xl">
                   {timelineList.length === 0 ? (
-                    <Paper>
-                      <Empty
-                        icon={Clock3}
-                        title="A story, waiting for its first line."
-                        description="Choose a moment worth remembering. Only you decide what goes here."
-                        action="Remember a moment"
-                        onAdd={() => add("timeline_entry")}
-                      />
-                    </Paper>
+                    <Empty
+                      icon={Clock3}
+                      title={search ? "No matching entries." : "No moments recorded."}
+                      description={search
+                        ? "Try a different word or clear your search."
+                        : "Use New timeline entry to add a date and a title."}
+                    />
                   ) : (
                     <div className="timeline-feed">
                       {timelineList.map((entry, index) => (
@@ -1368,6 +1358,13 @@ function NotebookWorkspace() {
                                 links={links}
                                 entities={entities}
                               />
+                              <button
+                                className="ink-button ghost small mt-3"
+                                onClick={() => edit("timeline_entry", entry)}
+                                aria-label={`Edit ${entry.title}`}
+                              >
+                                <Pencil size={12} /> Edit
+                              </button>
                             </Paper>
                           </div>
                         </div>
@@ -1378,10 +1375,6 @@ function NotebookWorkspace() {
               )}
               {view === "archive" && (
                 <>
-                  <p className="form-hint mb-6">
-                    Goals and terminal projects arrive here after two days.
-                    Notes and sticky notes arrive when you archive them.
-                  </p>
                   <div className="section-grid">
                     {archive.map(({ item, type, date }) => (
                       <Paper
@@ -1434,28 +1427,21 @@ function NotebookWorkspace() {
                       </Paper>
                     ))}
                     {archive.length === 0 && (
-                      <Paper>
-                        <Empty
-                          icon={Archive}
-                          title="Pages you've yet to turn."
-                          description="When something leaves your active notebook, you'll find it here. Kept, rather than forgotten."
-                        />
-                      </Paper>
+                      <Empty
+                        icon={Archive}
+                        title={search || filter !== "all"
+                          ? "No matching archived entries."
+                          : "Nothing archived."}
+                        description={search || filter !== "all"
+                          ? "Try a different search or type."
+                          : "Archived items will appear here."}
+                      />
                     )}
                   </div>
                 </>
               )}
             </div>
           )}
-          <footer className="notebook-footer">
-            <div className="footer-caption">
-              <MountainSketch />
-              <span>Your pace. Your pages.</span>
-            </div>
-            <span className="handwriting">
-              “A tracker for the life I want.”
-            </span>
-          </footer>
         </main>
       </div>
       {toast && (
@@ -1476,6 +1462,9 @@ function NotebookWorkspace() {
           kind={modal.type}
           item={modal.item}
           types={types}
+          onTypesChanged={() => {
+            void cache.invalidateQueries({ queryKey: [...queryKey, "types"] });
+          }}
           onClose={() => setModal(null)}
           onSaved={(message) => {
             setModal(null);
@@ -1489,6 +1478,13 @@ function NotebookWorkspace() {
           source={modal.source}
           links={links}
           entities={entities}
+          loading={connectionsLoading}
+          loadError={connectionsError?.message}
+          onRetry={() => {
+            queries.forEach((query) => {
+              void query.refetch();
+            });
+          }}
           onClose={() => setModal(null)}
           onChanged={() => cache.invalidateQueries({ queryKey })}
         />
@@ -1502,10 +1498,7 @@ function NotebookWorkspace() {
         </NotebookDialog>
       )}
       {modal?.kind === "quick" && (
-        <NotebookDialog
-          title="What would you like to put on paper?"
-          onClose={() => setModal(null)}
-        >
+        <NotebookDialog title="Add to notebook" onClose={() => setModal(null)}>
           <div className="quick-add-grid">
             {(Object.keys(typeNames) as EntityType[]).map((type) => {
               const Icon = icons[type];
@@ -1521,40 +1514,26 @@ function NotebookWorkspace() {
               );
             })}
           </div>
-          <p className="form-hint mt-6">
-            Nothing needs a perfect place. Just begin.
-          </p>
         </NotebookDialog>
       )}
       {modal?.kind === "onboard" && (
         <NotebookDialog
           title={
             [
-              "Welcome to your notebook.",
-              "Catch the little thoughts.",
-              "Connect the dots.",
+              "Your notebook",
+              "Notes and sticky notes",
+              "Connections and Archive",
             ][step]
           }
           onClose={finishOnboarding}
+          closeDisabled={onboardingBusy}
         >
-          <div className="mb-6">
-            <MountainSketch className="!w-48 mx-auto" />
-            <p className="handwriting text-[25px] text-[#7b8d65] text-center mt-3">
-              {
-                [
-                  "A little progress. A little presence.",
-                  "Ideas today. Possibilities tomorrow.",
-                  "A life, not a list.",
-                ][step]
-              }
-            </p>
-          </div>
           <p className="entity-description">
             {
               [
-                "Today is your home. Goals give you direction; Projects give your ideas a place to grow. Add a page with the button in the top corner.",
+                "Today holds your sticky notes and an overview of your work. Use Add to create something, or choose a section from the notebook index.",
                 "Sticky notes live on Today. When a thought needs more room, turn it into a Note. Write and reorder your blocks, then save when you’re ready.",
-                "The little link icon connects any two pages. The Library keeps outside inspiration; Timeline holds moments you choose to remember. Archive keeps the pages you've turned.",
+                "Use the link icon to connect entries. Library keeps outside references; Timeline holds dates you choose to record. Completed goals and completed or abandoned projects move to Archive after two days. Notes and sticky notes are archived manually.",
               ][step]
             }
           </p>
@@ -1579,11 +1558,7 @@ function NotebookWorkspace() {
                 step < 2 ? setStep(step + 1) : finishOnboarding()
               }
             >
-              {onboardingBusy
-                ? "Opening…"
-                : step < 2
-                  ? "A little look around"
-                  : "Make yourself at home"}
+              {onboardingBusy ? "Opening…" : step < 2 ? "Next" : "Done"}
               <ArrowRight size={14} />
             </button>
           </div>

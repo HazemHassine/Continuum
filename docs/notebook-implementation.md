@@ -15,12 +15,19 @@ interface. This is a local implementation, not a production deployment.
 
 ## Design choices
 
-Warm archival paper and restrained sage/yellow washes follow the Stitch reference.
-Epilogue is used for crisp reading and headings, Courier Prime for records,
-and Caveat for handwritten module titles and marginalia. Paper outlines use
-Rough.js with a fixed seed and a ResizeObserver, so they fit variable-height cards.
-Rough Notation adds emphasis to ordinary HTML headings. Decorative mountains,
-ink strokes, tape, and a light paper grain are rendered locally as SVG/CSS.
+The workspace uses a numbered notebook index, plain section names, serif
+headings, and a flat off-white page. Goals and Projects appear as numbered entries
+on a ruled ledger with a faint margin line, rather than separate dashboard cards.
+Rough.js outlines remain on Notes, sticky notes, and dialogs. Tape and handwriting
+are confined to sticky notes; the workspace has no decorative mountains, quotes,
+motivational banners, breadcrumbs, or repeated global add controls. Landing-page
+illustrations remain separate from the working notebook.
+
+Each section has one primary add action. Search appears for six or more entries
+or when invoked with Cmd/Ctrl+K; filters appear when there are multiple entries.
+An empty Today page has a simple explanation and one blank sticky-note surface.
+Other overview sections appear only when they have content. Project status is
+shown once, with its control in the entry row and its archive date below.
 
 Native modal dialogs provide focus containment and Escape handling. Unsaved edits
 are confirmed before closing; unload protection also guards a dirty editor.
@@ -69,6 +76,32 @@ It checks navigation, goal creation and progress clearing, BlockNote saving,
 connections, and mobile sticky creation. Desktop and 390px mobile screenshots
 are visually reviewed, including mobile overflow. QA data never enters the
 normal application's schema.
+
+The later decluttering and hardening revisions were initially source-only at
+the user's request. On 17 October 2026 the user authorized local builds/tests.
+The current source passed 57 backend tests, backend/frontend lint, standalone
+TypeScript checking, a low-memory production build, and `alembic check` against
+the running PostgreSQL database. Checks ran sequentially, with only the frontend
+dev container temporarily stopped for the production build and restored afterward.
+The backend suite uses SQLite. Latest-version browser/visual QA is still pending.
+
+The subsequent auth-hardening pass adds server-side
+email/password validation (including bcrypt's UTF-8 byte limit), required JWT
+expiry/issued-at/subject claims, safe handling of malformed credentials, and
+idempotent onboarding completion. The browser retains a saved session during
+temporary API/network failures and offers retry instead of silently signing out.
+Auth pages remain reachable with stale cookies, login redirects stay within
+the dashboard, and auth cookies use Secure on HTTPS. This does not change the
+existing localStorage-based token architecture or introduce email verification.
+Its regression tests now pass. Search shortcut focus and onboarding
+instructions were corrected to match the simplified workspace.
+
+The following M7 usability pass is compiled/type-checked but not browser-validated: section-specific loading
+and error handling, discoverable search, accurate empty/filter states, Timeline
+editing, connection-loading guards, dialog focus and pending-save behavior,
+field-level error descriptions, explicit keyboard saves, safer custom-type entry,
+larger mobile controls, and bounded polling/rough-outline redraws. See
+[M7 acceptance](m7-acceptance.md) for the changes and the **unrun** review checklist.
 
 ## Explicit boundaries and remaining acceptance work
 

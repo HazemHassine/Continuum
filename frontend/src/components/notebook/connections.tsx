@@ -21,18 +21,25 @@ export function Connections({
   source,
   entities,
   links,
+  loading = false,
+  loadError,
+  onRetry,
   onClose,
   onChanged,
 }: {
   source: EntityRef;
   entities: EntityRef[];
   links: EntityLink[];
+  loading?: boolean;
+  loadError?: string;
+  onRetry: () => void;
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: () => void | Promise<unknown>;
 }) {
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const unavailable = loading || !!loadError;
   const connected = links
     .map((link) => ({ link, other: otherEnd(link, source) }))
     .filter((item) => item.other !== null);
@@ -45,12 +52,13 @@ export function Connections({
       ),
   );
   async function change(action: () => Promise<unknown>) {
+    if (busy || unavailable) return;
     setBusy(true);
     setError("");
     try {
       await action();
       setSelected("");
-      onChanged();
+      await onChanged();
     } catch (error) {
       setError(
         error instanceof Error
@@ -62,19 +70,24 @@ export function Connections({
     }
   }
   return (
-    <NotebookDialog title="Connect the dots" onClose={onClose}>
-      <p className="form-hint mb-5">
-        Connections add context. Nothing has to belong to anything.
-      </p>
+    <NotebookDialog title="Connections" onClose={onClose} closeDisabled={busy}>
       <p className="entity-title mb-3">{source.title}</p>
+      {loadError ? (
+        <p role="alert" className="error-note">
+          Couldn’t load all entries and connections.
+          <button className="ml-3 underline" onClick={onRetry}>Try again</button>
+        </p>
+      ) : loading && (
+        <p className="form-hint mb-5" role="status">Loading connections…</p>
+      )}
       {error && (
         <p role="alert" className="error-note">
           {error}
         </p>
       )}
-      {connected.length === 0 && (
+      {!unavailable && connected.length === 0 && (
         <p className="form-hint mb-5">
-          No connections yet. Start wherever it feels useful.
+          No connections yet.
         </p>
       )}
       {connected.map(({ link, other }) => {
@@ -87,10 +100,10 @@ export function Connections({
               <span className="stamp mr-2">
                 {other?.type.replaceAll("_", " ")}
               </span>
-              {entity?.title ?? "Archived item"}
+              {entity?.title ?? "Unavailable entry"}
             </div>
             <button
-              disabled={busy}
+              disabled={busy || unavailable}
               aria-label={`Remove connection to ${entity?.title ?? "item"}`}
               className="icon-button"
               onClick={() => change(() => workspaceApi.unlink(link.id))}
@@ -111,13 +124,13 @@ export function Connections({
         }}
       >
         <label>
-          Link another page
+          Connect another entry
           <select
             value={selected}
             onChange={(event) => setSelected(event.target.value)}
-            disabled={busy}
+            disabled={busy || unavailable || options.length === 0}
           >
-            <option value="">Choose a page…</option>
+            <option value="">Choose an entry…</option>
             {options.map((item) => (
               <option
                 key={`${item.type}:${item.id}`}
@@ -128,13 +141,20 @@ export function Connections({
             ))}
           </select>
         </label>
+        {!unavailable && options.length === 0 && (
+          <p className="form-hint">
+            {connected.length > 0
+              ? "All other entries are already connected."
+              : "Create another entry before making a connection."}
+          </p>
+        )}
         <div className="form-actions">
-          <button type="button" className="ink-button ghost" onClick={onClose}>
+          <button type="button" className="ink-button ghost" disabled={busy} onClick={onClose}>
             Done
           </button>
           <button
             type="submit"
-            disabled={busy || !selected}
+            disabled={busy || unavailable || !selected}
             className="ink-button"
           >
             <Link2 size={14} />

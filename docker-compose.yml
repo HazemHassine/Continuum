@@ -49,6 +49,13 @@ services:
       network: host
     container_name: continuum-frontend
     restart: unless-stopped
+    working_dir: /app
+    # Sync the mounted dependency volumes with the current workspace lockfile.
+    # Recreating a container must not restore an older image's editor version.
+    command:
+      - sh
+      - -c
+      - pnpm install --frozen-lockfile --prefer-offline --child-concurrency=1 --network-concurrency=2 && exec pnpm --filter tracker-frontend dev
     depends_on:
       - backend
     environment:
@@ -56,6 +63,10 @@ services:
       PORT: 3100
       HOSTNAME: "0.0.0.0"
     volumes:
+      - ./package.json:/app/package.json:ro
+      - ./pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
+      - ./pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
+      - continuum_frontend_node_modules:/app/node_modules
       - ./frontend:/app/frontend
       - /app/frontend/node_modules
       - /app/frontend/.next
@@ -64,3 +75,4 @@ services:
 
 volumes:
   continuum_pgdata:
+  continuum_frontend_node_modules:

@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Opt in on constrained machines without slowing normal/CI builds.
+  ...(process.env.CONTINUUM_LOW_MEMORY_BUILD === "1"
+    ? { experimental: { cpus: 1 } }
+    : {}),
   async rewrites() {
     return [
       {

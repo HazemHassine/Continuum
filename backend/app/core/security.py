@@ -19,10 +19,15 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"),
-        hashed_password.encode("utf-8"),
-    )
+    if len(plain_password.encode("utf-8")) > 72:
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
 
 def create_access_token(
@@ -33,7 +38,7 @@ def create_access_token(
 ) -> str:
     """Create a signed JWT token."""
     now = datetime.now(UTC)
-    if expires_delta:
+    if expires_delta is not None:
         expire = now + expires_delta
     else:
         expire = now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
@@ -84,13 +89,14 @@ def get_current_user(
             token,
             settings.JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
-            options={"verify_aud": False},
+            options={"require": ["sub", "exp", "iat"]},
         )
-        user_id_raw: str | None = payload.get("sub")
-        if not user_id_raw:
+        user_id_raw = payload.get("sub")
+        if not isinstance(user_id_raw, str) or not user_id_raw:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token: missing subject claim",
+                headers={"WWW-Authenticate": "Bearer"},
             )
         try:
             user_uuid = uuid.UUID(user_id_raw)
@@ -98,14 +104,22 @@ def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token: subject is not a valid UUID",
+                headers={"WWW-Authenticate": "Bearer"},
             ) from None
+
+        if payload.get("role") != "authenticated":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         return AuthenticatedUser(
             user_id=user_uuid,
             email=payload.get("email"),
             role=payload.get("role"),
         )
-    except jwt.PyJWTError:
+    except (jwt.PyJWTError, TypeError, ValueError, OverflowError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

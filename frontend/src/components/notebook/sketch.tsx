@@ -21,8 +21,16 @@ export function Paper({
     if (!box.current || !svg.current) return;
     const node = box.current;
     const surface = svg.current;
+    let frame = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
     const draw = () => {
-      const { width, height } = node.getBoundingClientRect();
+      // Measure the page itself, not its rotated screen-space bounding box.
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
+      if (!width || !height || (width === lastWidth && height === lastHeight)) return;
+      lastWidth = width;
+      lastHeight = height;
       surface.replaceChildren();
       surface.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const pen = rough.svg(surface);
@@ -37,10 +45,16 @@ export function Paper({
         }),
       );
     };
-    const observer = new ResizeObserver(draw);
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(draw);
+    });
     observer.observe(node);
     draw();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, []);
   return (
     <div id={id} ref={box} className={`paper paper-${tone} ${className}`}>
@@ -87,24 +101,19 @@ export function NotebookLogo({ small = false }: { small?: boolean }) {
     <div className={`notebook-logo ${small ? "small" : ""}`}>
       <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
         <path
-          d="M9 7l-1 26M16 5l1 29M25 6l-1 27M4 15l29-1M4 24l29 1"
+          d="M8 5l19 1 5 6-1 23-23-1V5M26 6v7l6-1M12 5l-1 29"
           stroke="currentColor"
           strokeWidth="1.3"
           strokeLinecap="round"
         />
         <path
-          d="M10 8L8 31M26 8l-1 23"
+          d="M7 12h8M7 21h7M7 29h7M19 21h8M19 26h5"
           stroke="currentColor"
           strokeWidth=".5"
         />
       </svg>
       <div>
-        <strong>
-          Continuum<span>.</span>
-        </strong>
-        {!small && (
-          <span className="handwriting">a notebook for your life</span>
-        )}
+        <strong>Continuum</strong>
       </div>
     </div>
   );

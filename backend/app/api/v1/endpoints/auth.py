@@ -25,18 +25,7 @@ router = APIRouter()
     "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
 )
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    email_clean = request.email.strip().lower()
-    if not email_clean or "@" not in email_clean:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid email address",
-        )
-    if len(request.password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 6 characters long",
-        )
-
+    email_clean = request.email
     existing_user = db.query(User).filter(User.email == email_clean).first()
     if existing_user:
         raise HTTPException(
@@ -73,7 +62,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
-    email_clean = request.email.strip().lower()
+    email_clean = request.email
     user = db.query(User).filter(User.email == email_clean).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(
@@ -143,7 +132,7 @@ def complete_onboarding(
     if not profile:
         profile = Profile(id=current_user.id, onboarding_completed_at=func.now())
         db.add(profile)
-    else:
+    elif profile.onboarding_completed_at is None:
         profile.onboarding_completed_at = func.now()
 
     db.commit()
